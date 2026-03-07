@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Height Measurement System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .status.disconnected {
+            background: #fee;
+            color: #c33;
+            border: 2px solid #fcc;
+        }
+
+        .status.connected {
+            background: #efe;
+            color: #3c3;
+            border: 2px solid #cfc;
+        }
+
+        .status.connecting {
+            background: #ffeaa7;
+            color: #d63031;
+            border: 2px solid #fdcb6e;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .height-display {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .height-value {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .height-label {
+            font-size: 14px;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        button.register-mode {
+            background: linear-gradient(135deg, #00b894 0%, #00cec9 100%);
+        }
+
+        button.register-mode:hover:not(:disabled) {
+            box-shadow: 0 10px 20px rgba(0, 184, 148, 0.3);
+        }
+
+        .result {
+            margin-top: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .result p {
+            color: #555;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .result strong {
+            color: #333;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📏 Height Measurement</h1>
+        <p class="subtitle">Ultrasonic Sensor System</p>
+
+        <div id="status" class="status disconnected">
+            Disconnected from MQTT Broker
+        </div>
+
+        <form id="measurementForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    placeholder="Enter your email" 
+                    required
+                >
+            </div>
+
+            <div class="height-display">
+                <div class="height-label">Current Height Reading</div>
+                <div class="height-value" id="heightValue">--</div>
+                <div class="height-label">centimeters</div>
+            </div>
+
+            <div class="form-group">
+                <label for="manualHeight">
+                    <input type="checkbox" id="manualMode" style="width: auto; margin-right: 8px;">
+                    Enter height manually
+                </label>
+                <input 
+                    type="number" 
+                    id="manualHeight" 
+                    placeholder="Enter height in cm" 
+                    min="0"
+                    max="300"
+                    step="0.1"
+                    style="display: none; margin-top: 10px;"
+                >
+            </div>
+
+            <button type="submit" id="submitBtn" disabled>
+                <span id="btnText">Connect to Broker First</span>
+            </button>
+        </form>
+
+        <div id="result" class="result">
+            <h3>✅ Measurement Saved!</h3>
+            <p><strong>Email:</strong> <span id="resultEmail"></span></p>
+            <p><strong>Height:</strong> <span id="resultHeight"></span> cm</p>
+            <p><strong>Time:</strong> <span id="resultTime"></span></p>
+        </div>
+    </div>
+
+    <script>
+        // MQTT Configuration
+        const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
+        const EMAIL_TOPIC = 'newJob/email';
+        const HEIGHT_TOPIC = 'newJob/height';
+        const SENSOR_TOPIC = 'newJob/sensor';  // For real-time sensor readings
+        
+        let client = null;
+        let isConnected = false;
+        let currentHeight = null;
+        let measurementSubmitted = false;
+
+        // DOM Elements
+        const statusDiv = document.getElementById('status');
+        const emailInput = document.getElementById('email');
+        const heightValueDisplay = document.getElementById('heightValue');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const resultDiv = document.getElementById('result');
+        const form = document.getElementById('measurementForm');
+        const manualModeCheckbox = document.getElementById('manualMode');
+        const manualHeightInput = document.getElementById('manualHeight');
+        
+        let isManualMode = false;
+
+        // Connect to MQTT Broker
+        function connectToMQTT() {
+            try {
+                updateStatus('connecting', 'Connecting to MQTT Broker...');
+                
+                client = mqtt.connect(BROKER_URL, {
+                    clientId: 'height_web_client_' + Math.random().toString(16).substr(2, 8),
+                    clean: true,
+                    reconnectPeriod: 1000,
+                });
+
+                client.on('connect', () => {
+                    console.log('Connected to MQTT Broker');
+                    isConnected = true;
+                    updateStatus('connected', '✓ Connected to MQTT Broker');
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Submit Measurement';
+                    
+                    // Subscribe to sensor topic to receive real-time sensor readings
+                    client.subscribe(SENSOR_TOPIC, (err) => {
+                        if (!err) {
+                            console.log('Subscribed to sensor topic');
+                        }
+                    });
+                });
+
+                client.on('message', (topic, message) => {
+                    if (topic === SENSOR_TOPIC) {
+                        const height = message.toString();
+                        currentHeight = height;
+                        heightValueDisplay.textContent = height;
+                        console.log('Received height:', height);
+                    }
+                });
+
+                client.on('error', (error) => {
+                    console.error('MQTT Error:', error);
+                    updateStatus('disconnected', '✗ Connection Error');
+                    submitBtn.disabled = true;
+                    btnText.textContent = 'Connection Failed';
+                });
+
+                client.on('offline', () => {
+                    isConnected = false;
+                    updateStatus('disconnected', '✗ Disconnected from Broker');
+                    submitBtn.disabled = true;
+                    btnText.textContent = 'Reconnecting...';
+                });
+
+                client.on('reconnect', () => {
+                    updateStatus('connecting', 'Reconnecting...');
+                });
+
+            } catch (error) {
+                console.error('Failed to connect:', error);
+                updateStatus('disconnected', '✗ Failed to Connect');
+            }
+        }
+
+        // Update status display
+        function updateStatus(status, text) {
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = text;
+        }
+
+        // Toggle manual mode
+        manualModeCheckbox.addEventListener('change', (e) => {
+            isManualMode = e.target.checked;
+            
+            if (isManualMode) {
+                manualHeightInput.style.display = 'block';
+                manualHeightInput.required = true;
+                heightValueDisplay.parentElement.style.opacity = '0.5';
+            } else {
+                manualHeightInput.style.display = 'none';
+                manualHeightInput.required = false;
+                manualHeightInput.value = '';
+                heightValueDisplay.parentElement.style.opacity = '1';
+            }
+        });
+
+        // Handle form submission
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            if (!isConnected) {
+                alert('Not connected to MQTT broker');
+                return;
+            }
+
+            // If already submitted, reset for new measurement
+            if (measurementSubmitted) {
+                resetForNewMeasurement();
+                return;
+            }
+
+            let heightToSend;
+            
+            // Check if manual mode is enabled
+            if (isManualMode) {
+                heightToSend = manualHeightInput.value.trim();
+                if (!heightToSend) {
+                    alert('Please enter a height value');
+                    return;
+                }
+            } else {
+                // Use sensor reading
+                if (!currentHeight) {
+                    alert('No height reading available. Please wait for sensor data or enable manual mode.');
+                    return;
+                }
+                heightToSend = currentHeight;
+            }
+
+            const email = emailInput.value.trim();
+            
+            if (!email) {
+                alert('Please enter your email');
+                return;
+            }
+
+            // Disable button and show loading
+            submitBtn.disabled = true;
+            btnText.innerHTML = 'Sending... <span class="spinner"></span>';
+
+            // Publish email and height to MQTT topics
+            client.publish(EMAIL_TOPIC, email, { qos: 1 }, (err) => {
+                if (err) {
+                    console.error('Failed to publish email:', err);
+                    alert('Failed to send email');
+                    submitBtn.disabled = false;
+                    btnText.textContent = 'Submit Measurement';
+                    return;
+                }
+
+                client.publish(HEIGHT_TOPIC, heightToSend, { qos: 1 }, (err) => {
+                    if (err) {
+                        console.error('Failed to publish height:', err);
+                        alert('Failed to send height');
+                        submitBtn.disabled = false;
+                        btnText.textContent = 'Submit Measurement';
+                    } else {
+                        // Show success result and change button
+                        showResult(email, heightToSend);
+                        measurementSubmitted = true;
+                        submitBtn.disabled = false;
+                        submitBtn.classList.add('register-mode');
+                        btnText.textContent = 'Perform New Measurement';
+                    }
+                });
+            });
+        });
+
+        // Display result after successful submission
+        function showResult(email, height) {
+            const now = new Date();
+            const timeString = now.toLocaleString();
+            
+            document.getElementById('resultEmail').textContent = email;
+            document.getElementById('resultHeight').textContent = height;
+            document.getElementById('resultTime').textContent = timeString;
+            
+            resultDiv.classList.add('show');
+        }
+
+        // Reset form for new measurement
+        function resetForNewMeasurement() {
+            // Clear input fields
+            emailInput.value = '';
+            manualHeightInput.value = '';
+            
+            // Reset manual mode
+            manualModeCheckbox.checked = false;
+            isManualMode = false;
+            manualHeightInput.style.display = 'none';
+            manualHeightInput.required = false;
+            heightValueDisplay.parentElement.style.opacity = '1';
+            
+            // Reset height display if no current sensor reading
+            if (!currentHeight) {
+                heightValueDisplay.textContent = '--';
+            }
+            
+            // Hide result
+            resultDiv.classList.remove('show');
+            
+            // Reset button
+            measurementSubmitted = false;
+            submitBtn.classList.remove('register-mode');
+            btnText.textContent = 'Submit Measurement';
+        }
+
+        // Connect on page load
+        window.addEventListener('load', () => {
+            connectToMQTT();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (client) {
+                client.end();
+            }
+        });
+    </script>
+</body>
+</html>
